@@ -405,6 +405,9 @@ class ClassroomAssistant:
         if self.wolfram_client and any(word in question for word in ['calculate', 'solve', '+', '-', '*', '/', '^']):
             result = self.query_wolfram(question)
             if result:
+                print(f"\n Response: {result}")
+                if self.microphone_available:
+                    self.speak(result)
                 return result, False
         
         # Cohere for general answers
@@ -419,6 +422,7 @@ class ClassroomAssistant:
             self.context_history.append({"role": "USER", "message": question})
             self.context_history.append({"role": "CHATBOT", "message": response.text})
             
+            print(f"\n Respoinse: {response.text}")
             # Speak non-graph responses
             if self.microphone_available:
                 self.speak(response.text)
