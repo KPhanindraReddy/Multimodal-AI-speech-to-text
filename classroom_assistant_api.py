@@ -66,10 +66,16 @@ class ClassroomAssistant:
             try:
                 with sr.Microphone() as source:
                     print("\n🎤 Listening... (speak clearly)")
+                    self.recognizer.adjust_for_ambient_noise(source, duration=1)
                     audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=15)
-                    text = self.recognizer.recognize_google(audio)
-                    print(f"🗣️ Raw input: {text}")
-                    return self.correct_spelling(text)
+                    try:
+                        text = self.recognizer.recognize_google(audio)
+                        print(f"🗣️ Raw input: {text}")
+                        return self.correct_spelling(text)
+                    except sr.UnknownValueError:
+                        print("🔇 Could not understand audio")
+                    except sr.RequestError as e:
+                        print(f"🔇 API unavailable: {e}")
             except sr.WaitTimeoutError:
                 print("⏳ Listening timed out. Please type your question.")
             except Exception as e:
@@ -96,6 +102,7 @@ class ClassroomAssistant:
             return text
 
     # ========== Enhanced Graph Generation ==========
+
     def generate_dynamic_data(self, topic):
         """Generate context-aware dataset based on user topic"""
         try:
@@ -312,6 +319,7 @@ class ClassroomAssistant:
         return "Failed to generate graph", False
 
     # ========== Diagram Generation Methods ==========
+
     def detect_visual_type(self, query: str) -> Tuple[Optional[str], Optional[str]]:
         """Determine if request needs chart/diagram and return type"""
         query = query.lower()
@@ -391,6 +399,7 @@ class ClassroomAssistant:
             return None, False
 
     # ========== Google Images Search Functionality ==========
+
     def get_google_images(self, query: str, num_images: int = 9) -> Tuple[Optional[str], bool]:
         """Fetch relevant Google Images for educational purposes"""
         try:
@@ -446,7 +455,6 @@ class ClassroomAssistant:
                 except Exception as e:
                     print(f"⚠️ Couldn't load image {i+1}: {e}")
                     continue
-                    
             plt.tight_layout()
             plt.show()
             return True
@@ -455,6 +463,7 @@ class ClassroomAssistant:
             return False
 
     # ========== Original Matplotlib Generation ==========
+
     def generate_graph_code(self, query):
         """Generate Python code for visualization using Cohere"""
         try:
@@ -512,6 +521,7 @@ class ClassroomAssistant:
             return False
 
     # ========== Query Processing ==========
+
     def query_wolfram(self, question):
         """Query Wolfram Alpha"""
         try:
@@ -527,9 +537,14 @@ class ClassroomAssistant:
         
         # Check for image requests first
         if any(keyword in question.lower() for keyword in ['image','show images', 'google images', 'visual examples', 'reference images']):
-            response, success = self.get_google_images(question)
-            if success:
-                return response, True
+            try:
+                response, success = self.get_google_images(question)
+                if success:
+                    return response, True
+                else:
+                    print("⚠️ Falling back from image search...")
+            except Exception as e:
+                print(f"⚠️ Image search failed: {e}")
         
         # First detect visual type with improved detection
         visual_type, specific_type = self.detect_visual_type(question)
@@ -589,7 +604,7 @@ class ClassroomAssistant:
         except Exception as e:
             print(f"Cohere error: {e}")
             return "I couldn't process that request. Please try again.", False
-    
+
     def run(self):
         """Main interactive session"""
         print("\n🧠 Smart Classroom Assistant 4.0 🤖")
@@ -625,6 +640,9 @@ class ClassroomAssistant:
             except KeyboardInterrupt:
                 print("\n👋 Session ended. Keep learning!")
                 break
+            except Exception as e:
+                print(f"\n⚠️ Unexpected error: {e}")
+                print("The assistant has recovered and is ready for your next question.")
 
 if __name__ == "__main__":
     assistant = ClassroomAssistant()
