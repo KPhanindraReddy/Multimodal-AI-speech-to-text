@@ -11,7 +11,7 @@
             background-color: #f5f7fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        
+
         .chat-container {
             max-height: 500px;
             overflow-y: auto;
@@ -19,7 +19,7 @@
             background-color: white;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        
+
         .chat-message {
             padding: 12px 18px;
             margin: 12px;
@@ -27,39 +27,39 @@
             max-width: 80%;
             position: relative;
         }
-        
+
         .user-message {
             background-color: #e3f2fd;
             margin-left: auto;
             border-bottom-right-radius: 2px;
         }
-        
+
         .assistant-message {
             background-color: #f1f1f1;
             margin-right: auto;
             border-bottom-left-radius: 2px;
         }
-        
+
         .chat-input {
             box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
             border-radius: 0 0 8px 8px;
         }
-        
+
         .feature-card {
             transition: transform 0.3s;
             cursor: pointer;
             height: 100%;
         }
-        
+
         .feature-card:hover {
             transform: translateY(-5px);
         }
-        
+
         .feature-icon {
             font-size: 2rem;
             color: #4a6cf7;
         }
-        
+
         .image-preview {
             max-width: 100%;
             max-height: 600px;
@@ -74,7 +74,7 @@
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
-        
+
         .recording-pulse {
             animation: pulse 1.5s infinite;
             color: #dc3545;
@@ -94,7 +94,7 @@
             color: white;
             transition: all 0.3s;
         }
-        
+
         .btn-speak:hover {
             background-color: #3a5cd5;
             transform: scale(1.05);
@@ -153,14 +153,14 @@
                             </button>
                         </div>
                     </div>
-                    
+
                     <div id="chatContainer" class="chat-container p-3">
                         <!-- Welcome message -->
                         <div class="chat-message assistant-message">
                             <p class="mb-0">👋 Hello! I'm your Smart Classroom Assistant. I can answer questions, create visualizations, and help with your learning. Try asking me a question or use one of the example queries in the suggestions.</p>
                         </div>
                     </div>
-                    
+
                     <div class="card-footer chat-input py-3 bg-white">
                         <form id="queryForm" class="d-flex align-items-center">
                             <input type="text" id="queryInput" class="form-control me-2" placeholder="Ask a question..." required>
@@ -258,14 +258,46 @@
             const speakButton = document.getElementById('speakButton');
             const clearChatButton = document.getElementById('clearChat');
             const exampleQueryButtons = document.querySelectorAll('.example-query');
-            
-            let isRecording = false;
-            let mediaRecorder;
-            let audioChunks = [];
-            
-            // Initialize speech capabilities
-            checkMicrophoneAvailability();
-            
+
+            let isListening = false;
+            let recognition;
+
+            // Initialize speech recognition
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = function() {
+                    isListening = true;
+                    speakButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                    speakButton.classList.add('btn-danger');
+                    speakButton.querySelector('i').classList.add('recording-pulse');
+                };
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    queryInput.value = transcript;
+                    queryForm.dispatchEvent(new Event('submit'));
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    isListening = false;
+                    resetMicButton();
+                    addMessageToChat("There was an error with speech recognition. Please try again.", 'assistant');
+                };
+
+                recognition.onend = function() {
+                    isListening = false;
+                    resetMicButton();
+                };
+            } else {
+                speakButton.disabled = true;
+                speakButton.title = 'Speech recognition not supported';
+            }
+
             // Handle form submission
             queryForm.addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -276,7 +308,7 @@
                     queryInput.value = '';
                 }
             });
-            
+
             // Handle example query buttons
             exampleQueryButtons.forEach(button => {
                 button.addEventListener('click', function() {
@@ -285,7 +317,7 @@
                     queryForm.dispatchEvent(new Event('submit'));
                 });
             });
-            
+
             // Handle clear chat button
             clearChatButton.addEventListener('click', function() {
                 // Keep only the first welcome message
@@ -293,145 +325,22 @@
                 chatContainer.innerHTML = '';
                 chatContainer.appendChild(welcomeMessage);
             });
-            
+
             // Handle speak button
             speakButton.addEventListener('click', function() {
-                if (isRecording) {
-                    stopRecording();
+                if (isListening) {
+                    recognition.stop();
                 } else {
-                    startRecording();
+                    recognition.start();
                 }
             });
-            
-            // Check microphone availability
-            function checkMicrophoneAvailability() {
-                fetch('/check-microphone')
-                .then(response => {
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    return response.json();
-                })
-                .then(data => {
-                    if (!data.available) {
-                        speakButton.disabled = false;
-                        speakButton.title = 'Microphone not available';
-                    }
-                })
-                .catch(err => {
-                    console.error('Error checking microphone:', err);
-                   
-                });
-            }
-            
-            // Start voice recording
-            function startRecording() {
-                // Reset previous recording
-                audioChunks = [];
-                isRecording = true;
-                
-                // Visual feedback
-                speakButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
-                speakButton.classList.add('btn-danger');
-                speakButton.querySelector('i').classList.add('recording-pulse');
-                
-                console.log('Requesting microphone access...');
-                
-                navigator.mediaDevices.getUserMedia({ audio: {channelCount: 1,sampleRate: 16000,sampleSize: 16}})
-                .then(stream => {
-                    console.log('Microphone access granted');
-                    mimeType: 'audio/wav'
-                    mediaRecorder = new MediaRecorder(stream);
-                    
-                    mediaRecorder.ondataavailable = e => {
-                        console.log('Audio data available:', e.data.size);
-                        audioChunks.push(e.data);
-                    };
-                    mediaRecorder.start(1000); 
 
-                    mediaRecorder.onstop = () => {
-                        console.log('Recording stopped');
-                        stream.getTracks().forEach(track => track.stop());
-                        sendAudioToServer();
-                    };
-                    
-                    mediaRecorder.onerror = e => {
-                        console.error('Recorder error:', e.error);
-                        isRecording = false;
-                        resetMicButton();
-                    };
-                    
-                   // Collect data every 100ms
-                    console.log('Recording started');
-                    
-                    // Auto-stop after 10 seconds
-                    setTimeout(() => {
-                        if (isRecording) {
-                            stopRecording();
-                        }
-                    }, 10000);
-                })
-                .catch(err => {
-                    console.error('Microphone error:', err);
-                    isRecording = false;
-                    resetMicButton();
-                    addMessageToChat("Microphone access denied. Please check permissions.", 'assistant');
-                });
-            }
-            
             function resetMicButton() {
                 speakButton.innerHTML = '<i class="fas fa-microphone"></i>';
                 speakButton.classList.remove('btn-danger');
                 speakButton.querySelector('i').classList.remove('recording-pulse');
             }
-            
-            // Stop voice recording
-            function stopRecording() {
-                if (mediaRecorder && isRecording) {
-                    mediaRecorder.stop();
-                    isRecording = false;
-                    
-                    // Update UI back to normal
-                    speakButton.innerHTML = '<i class="fas fa-microphone"></i>';
-                    speakButton.classList.remove('btn-danger');
-                    speakButton.querySelector('i').classList.remove('recording-pulse');
-                    
-                    // Show processing indicator
-                    addProcessingIndicator();
-                }
-            }
-            
-            // Send recorded audio to the server
-            function sendAudioToServer() {
-                console.log('Audio chunks recorded:', audioChunks.length);
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav; codecs=MS_PCM' });
-                const formData = new FormData();
-                formData.append('audio', audioBlob, 'recording.wav');
-        
-                fetch('/speech-to-text', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    console.log('Response status:', response.status);
-                    if (!response.ok) throw new Error('Speech recognition failed');
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.status === 'success') {
-                        queryInput.value = data.text;
-                        queryForm.dispatchEvent(new Event('submit'));
-                    } else {
-                        addMessageToChat("Sorry, I couldn't understand what you said. Please try again.", 'assistant');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error processing speech:', err);
-                    addMessageToChat("There was an error processing your speech. Please try typing instead.", 'assistant');
-                })
-                .finally(() => {
-                    removeProcessingIndicator();
-                });
-            }
-        
+
             // Add processing indicator
             function addProcessingIndicator() {
                 const processingDiv = document.createElement('div');
@@ -441,7 +350,7 @@
                 chatContainer.appendChild(processingDiv);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
-            
+
             // Remove processing indicator
             function removeProcessingIndicator() {
                 const indicator = document.getElementById('processingIndicator');
@@ -449,11 +358,11 @@
                     indicator.remove();
                 }
             }
-            
+
             // Process query
             function processQuery(query) {
                 addProcessingIndicator();
-                
+
                 fetch('/process', {
                     method: 'POST',
                     headers: {
@@ -483,50 +392,49 @@
                     addMessageToChat("I'm sorry, there was an error processing your request. Please try again.", 'assistant');
                 });
             }
-            
+
             // Add message to chat
             function addMessageToChat(message, sender) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `chat-message ${sender}-message`;
-                
+
                 // Process message text to handle links and formatting
                 const formattedMessage = formatMessage(message);
                 messageDiv.innerHTML = formattedMessage;
-                
+
                 chatContainer.appendChild(messageDiv);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
-            
+
             // Add image to chat
             function addImageToChat(imageBase64) {
                 const imageContainer = document.createElement('div');
                 imageContainer.className = 'text-center';
-                
+
                 const image = document.createElement('img');
                 image.src = `data:image/png;base64,${imageBase64}`;
                 image.className = 'image-preview';
                 image.alt = 'Generated visualization';
-                
+
                 imageContainer.appendChild(image);
                 chatContainer.appendChild(imageContainer);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
-            
+
             // Format message - handle links and basic formatting
             function formatMessage(text) {
                 // Convert URLs to clickable links
                 text = text.replace(
-                    /(https?:\/\/[^\s]+)/g, 
+                    /(https?:\/\/[^\s]+)/g,
                     '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
                 );
-                
+
                 // Convert line breaks to <br>
                 text = text.replace(/\n/g, '<br>');
-                
+
                 return text;
             }
         });
-        
     </script>
 </body>
 </html>
