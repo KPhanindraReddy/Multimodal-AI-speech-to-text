@@ -363,7 +363,7 @@
             function processQuery(query) {
                 addProcessingIndicator();
 
-                fetch('/process', {
+                fetch('http://localhost:3000/process', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
