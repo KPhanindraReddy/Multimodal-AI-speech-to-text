@@ -67,6 +67,7 @@
             display: block;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease-in-out;
         }
 
         @keyframes pulse {
@@ -129,6 +130,47 @@
             0% { transform: translateY(0); }
             50% { transform: translateY(-8px); }
             100% { transform: translateY(0); }
+        }
+
+        /* Typing animation */
+        .typing-animation {
+            display: flex;
+            padding: 10px;
+        }
+
+        .typing-animation span {
+            height: 8px;
+            width: 8px;
+            background: #4a6cf7;
+            border-radius: 50%;
+            margin: 0 2px;
+            animation: bounce 1s infinite ease-in-out;
+        }
+
+        .typing-animation span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-animation span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        /* Speaking animation */
+        .chat-message.speaking {
+            border-left: 3px solid #4a6cf7;
+            background-color: rgba(74, 108, 247, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        /* Image preview animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -255,47 +297,107 @@
             const chatContainer = document.getElementById('chatContainer');
             const queryForm = document.getElementById('queryForm');
             const queryInput = document.getElementById('queryInput');
-            const speakButton = document.getElementById('speakButton');
-            const clearChatButton = document.getElementById('clearChat');
-            const exampleQueryButtons = document.querySelectorAll('.example-query');
 
-            let isListening = false;
-            let recognition;
+            // Show thinking indicator
+            function showThinkingIndicator() {
+                const indicator = document.createElement('div');
+                indicator.id = 'thinking-indicator';
+                indicator.className = 'chat-message assistant-message';
+                indicator.innerHTML = `
+                    <div class="typing-animation">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                `;
+                chatContainer.appendChild(indicator);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
 
-            // Initialize speech recognition
-            if ('webkitSpeechRecognition' in window) {
-                recognition = new webkitSpeechRecognition();
-                recognition.continuous = false;
-                recognition.interimResults = false;
-                recognition.lang = 'en-US';
+            // Hide thinking indicator
+            function hideThinkingIndicator() {
+                const indicator = document.getElementById('thinking-indicator');
+                if (indicator) indicator.remove();
+            }
 
-                recognition.onstart = function() {
-                    isListening = true;
-                    speakButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
-                    speakButton.classList.add('btn-danger');
-                    speakButton.querySelector('i').classList.add('recording-pulse');
+            // Text-to-speech with animation
+            function speakWithAnimation(text) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'chat-message assistant-message';
+                chatContainer.appendChild(messageDiv);
+
+                const words = text.split(' ');
+                let i = 0;
+
+                function addWord() {
+                    if (i < words.length) {
+                        messageDiv.textContent += (i > 0 ? ' ' : '') + words[i];
+                        i++;
+                        setTimeout(addWord, 100); // Speed of word appearance
+                    }
+                }
+
+                utterance.onstart = () => {
+                    messageDiv.classList.add('speaking');
+                    addWord();
                 };
 
-                recognition.onresult = function(event) {
-                    const transcript = event.results[0][0].transcript;
-                    queryInput.value = transcript;
-                    queryForm.dispatchEvent(new Event('submit'));
+                utterance.onend = () => {
+                    messageDiv.classList.remove('speaking');
                 };
 
-                recognition.onerror = function(event) {
-                    console.error('Speech recognition error:', event.error);
-                    isListening = false;
-                    resetMicButton();
-                    addMessageToChat("There was an error with speech recognition. Please try again.", 'assistant');
-                };
+                speechSynthesis.speak(utterance);
+            }
 
-                recognition.onend = function() {
-                    isListening = false;
-                    resetMicButton();
-                };
-            } else {
-                speakButton.disabled = true;
-                speakButton.title = 'Speech recognition not supported';
+            // Process query
+            async function processQuery(query) {
+                addMessageToChat(query, 'user');
+                showThinkingIndicator();
+
+                try {
+                    const response = await fetch('http://localhost:3000/process', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ query: query })
+                    });
+
+                    const data = await response.json();
+                    hideThinkingIndicator();
+
+                    if (data.status === 'success') {
+                        speakWithAnimation(data.text_response);
+
+                        if (data.is_visual && data.image) {
+                            setTimeout(() => {
+                                const img = document.createElement('img');
+                                img.src = `data:image/png;base64,${data.image}`;
+                                img.className = 'image-preview';
+                                img.alt = 'Generated visualization';
+                                chatContainer.appendChild(img);
+                                chatContainer.scrollTop = chatContainer.scrollHeight;
+                            }, 500);
+                        }
+                    } else {
+                        addMessageToChat(data.text_response || "Sorry, something went wrong", 'assistant');
+                    }
+                } catch (error) {
+                    hideThinkingIndicator();
+                    addMessageToChat("Sorry, there was a connection error", 'assistant');
+                    console.error("Error:", error);
+                }
+            }
+
+            // Add message to chat
+            function addMessageToChat(message, sender) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${sender}-message`;
+                messageDiv.textContent = message;
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
             }
 
             // Handle form submission
@@ -303,137 +405,10 @@
                 e.preventDefault();
                 const query = queryInput.value.trim();
                 if (query) {
-                    addMessageToChat(query, 'user');
                     processQuery(query);
                     queryInput.value = '';
                 }
             });
-
-            // Handle example query buttons
-            exampleQueryButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const query = this.textContent;
-                    queryInput.value = query;
-                    queryForm.dispatchEvent(new Event('submit'));
-                });
-            });
-
-            // Handle clear chat button
-            clearChatButton.addEventListener('click', function() {
-                // Keep only the first welcome message
-                const welcomeMessage = chatContainer.firstElementChild;
-                chatContainer.innerHTML = '';
-                chatContainer.appendChild(welcomeMessage);
-            });
-
-            // Handle speak button
-            speakButton.addEventListener('click', function() {
-                if (isListening) {
-                    recognition.stop();
-                } else {
-                    recognition.start();
-                }
-            });
-
-            function resetMicButton() {
-                speakButton.innerHTML = '<i class="fas fa-microphone"></i>';
-                speakButton.classList.remove('btn-danger');
-                speakButton.querySelector('i').classList.remove('recording-pulse');
-            }
-
-            // Add processing indicator
-            function addProcessingIndicator() {
-                const processingDiv = document.createElement('div');
-                processingDiv.className = 'chat-message assistant-message';
-                processingDiv.id = 'processingIndicator';
-                processingDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div> Processing...';
-                chatContainer.appendChild(processingDiv);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-
-            // Remove processing indicator
-            function removeProcessingIndicator() {
-                const indicator = document.getElementById('processingIndicator');
-                if (indicator) {
-                    indicator.remove();
-                }
-            }
-
-            // Process query
-            function processQuery(query) {
-                addProcessingIndicator();
-
-                fetch('http://localhost:3000/process', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ query: query })
-                })
-                .then(response => {
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    return response.json();
-                })
-                .then(data => {
-                    removeProcessingIndicator();
-                    if (data.status === 'success') {
-                        addMessageToChat(data.response, 'assistant');
-                        if (data.is_visual && data.image) {
-                            addImageToChat(data.image);
-                        }
-                    } else {
-                        addMessageToChat("I'm sorry, I encountered an error: " + data.message, 'assistant');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error processing query:', err);
-                    removeProcessingIndicator();
-                    addMessageToChat("I'm sorry, there was an error processing your request. Please try again.", 'assistant');
-                });
-            }
-
-            // Add message to chat
-            function addMessageToChat(message, sender) {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `chat-message ${sender}-message`;
-
-                // Process message text to handle links and formatting
-                const formattedMessage = formatMessage(message);
-                messageDiv.innerHTML = formattedMessage;
-
-                chatContainer.appendChild(messageDiv);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-
-            // Add image to chat
-            function addImageToChat(imageBase64) {
-                const imageContainer = document.createElement('div');
-                imageContainer.className = 'text-center';
-
-                const image = document.createElement('img');
-                image.src = `data:image/png;base64,${imageBase64}`;
-                image.className = 'image-preview';
-                image.alt = 'Generated visualization';
-
-                imageContainer.appendChild(image);
-                chatContainer.appendChild(imageContainer);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-
-            // Format message - handle links and basic formatting
-            function formatMessage(text) {
-                // Convert URLs to clickable links
-                text = text.replace(
-                    /(https?:\/\/[^\s]+)/g,
-                    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-                );
-
-                // Convert line breaks to <br>
-                text = text.replace(/\n/g, '<br>');
-
-                return text;
-            }
         });
     </script>
 </body>

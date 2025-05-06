@@ -11,7 +11,6 @@ import textwrap
 import requests
 import json
 import random
-import pyttsx3
 from PIL import Image
 import io
 from urllib.parse import quote
@@ -31,7 +30,7 @@ class ClassroomAssistant:
         self.wolfram_client = self.init_wolfram()
         self.microphone_available = self.check_microphone()
         self.context_history = []
-        self.tts_engine = pyttsx3.init()
+        # self.tts_engine = pyttsx3.init()  # Commented out TTS initialization
         self.graph_types = {
             'bar': self.generate_bar_config,
             'line': self.generate_line_config,
@@ -55,11 +54,14 @@ class ClassroomAssistant:
         except OSError:
             return False
     
+    # Commented out the speak method
+    """
     def speak(self, text):
-        """Convert text to speech (except for graphs)"""
+        # Convert text to speech (except for graphs)
         self.tts_engine.say(text)
         self.tts_engine.runAndWait()
-    
+    """
+
     def get_input(self):
         """Get input with enhanced error handling"""
         if self.microphone_available:
@@ -580,8 +582,8 @@ class ClassroomAssistant:
             result = self.query_wolfram(question)
             if result:
                 print(f"\n Response: {result}")
-                if self.microphone_available:
-                    self.speak(result)
+                # if self.microphone_available:
+                #     self.speak(result)  # Commented out TTS call
                 return result, False
         
         # Cohere for general answers
@@ -597,8 +599,8 @@ class ClassroomAssistant:
             self.context_history.append({"role": "CHATBOT", "message": response.text})
             
             print(f"\n Response: {response.text}")
-            if self.microphone_available:
-                self.speak(response.text)
+            # if self.microphone_available:
+            #     self.speak(response.text)  # Commented out TTS call
                 
             return response.text, False
         except Exception as e:
