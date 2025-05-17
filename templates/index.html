@@ -297,31 +297,67 @@
             const chatContainer = document.getElementById('chatContainer');
             const queryForm = document.getElementById('queryForm');
             const queryInput = document.getElementById('queryInput');
+            const speakButton = document.getElementById('speakButton');
+            let isRecording = false;
 
-            // Show thinking indicator
-            function showThinkingIndicator() {
-                const indicator = document.createElement('div');
-                indicator.id = 'thinking-indicator';
-                indicator.className = 'chat-message assistant-message';
-                indicator.innerHTML = `
-                    <div class="typing-animation">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                `;
-                chatContainer.appendChild(indicator);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
+            // Initialize speech recognition if available
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            let recognition = null;
 
-            // Hide thinking indicator
-            function hideThinkingIndicator() {
-                const indicator = document.getElementById('thinking-indicator');
-                if (indicator) indicator.remove();
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = function() {
+                    isRecording = true;
+                    speakButton.classList.add('recording-pulse');
+                    speakButton.innerHTML = '<i class="fas fa-stop"></i>';
+                };
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    queryInput.value = transcript;
+
+                    // Automatically submit the form after speech input
+                    queryForm.dispatchEvent(new Event('submit'));
+                };
+
+                recognition.onend = function() {
+                    isRecording = false;
+                    speakButton.classList.remove('recording-pulse');
+                    speakButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    isRecording = false;
+                    speakButton.classList.remove('recording-pulse');
+                    speakButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                    addMessageToChat("Sorry, I couldn't hear that. Please try again.", 'assistant');
+                };
+
+                speakButton.addEventListener('click', function() {
+                    if (!isRecording) {
+                        recognition.start();
+                    } else {
+                        recognition.stop();
+                    }
+                });
+            } else {
+                speakButton.addEventListener('click', function() {
+                    addMessageToChat("Sorry, speech recognition is not supported in your browser.", 'assistant');
+                });
             }
 
             // Text-to-speech with animation
             function speakWithAnimation(text) {
+                if (!window.speechSynthesis) {
+                    console.error("Speech synthesis not supported in this browser.");
+                    addMessageToChat("Text-to-speech is not supported in your browser.", 'assistant');
+                    return;
+                }
+
                 const utterance = new SpeechSynthesisUtterance(text);
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'chat-message assistant-message';
@@ -398,6 +434,28 @@
                 messageDiv.textContent = message;
                 chatContainer.appendChild(messageDiv);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+            // Show thinking indicator
+            function showThinkingIndicator() {
+                const indicator = document.createElement('div');
+                indicator.id = 'thinking-indicator';
+                indicator.className = 'chat-message assistant-message';
+                indicator.innerHTML = `
+                    <div class="typing-animation">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                `;
+                chatContainer.appendChild(indicator);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+            // Hide thinking indicator
+            function hideThinkingIndicator() {
+                const indicator = document.getElementById('thinking-indicator');
+                if (indicator) indicator.remove();
             }
 
             // Handle form submission
